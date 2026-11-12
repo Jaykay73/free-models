@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NVIDIA NIM Free Models Status</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-heading: #f0f6fc;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.5;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    h1 {
+      color: var(--text-heading);
+      font-size: 1.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    p.sub {
+      color: #8b949e;
+      font-size: 0.95rem;
+      margin-top: 0.25rem;
+    }
+    .header-links {
+      display: flex;
+      gap: 0.75rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-heading);
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .btn:hover {
+      background: #21262d;
+      border-color: #8b949e;
+    }
+    .btn.primary {
+      background: #238636;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #fff;
+    }
+    .btn.primary:hover {
+      background: #2ea043;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.6rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge.ok { background: rgba(63, 185, 80, 0.15); color: var(--green); border: 1px solid rgba(63, 185, 80, 0.4); }
+    .badge.degraded { background: rgba(210, 153, 34, 0.15); color: var(--yellow); border: 1px solid rgba(210, 153, 34, 0.4); }
+    .badge.stale { background: rgba(248, 81, 73, 0.15); color: var(--red); border: 1px solid rgba(248, 81, 73, 0.4); }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .meta-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+      font-size: 0.85rem;
+      color: #8b949e;
+      background: var(--card-bg);
+      padding: 0.8rem 1.2rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .meta-bar span strong {
+      color: var(--text-heading);
+    }
+    section {
+      margin-bottom: 2.5rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      color: var(--text-heading);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .aliases-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .alias-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .alias-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--blue);
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .alias-primary {
+      font-family: ui-monospace, monospace;
+      font-size: 0.85rem;
+      background: #0d1117;
+      padding: 0.35rem 0.6rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--green);
+      word-break: break-all;
+      margin-bottom: 0.5rem;
+    }
+    .alias-fallbacks {
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+    .models-table-wrap {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      text-align: left;
+    }
+    th, td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #1c2128;
+      color: var(--text-heading);
+      font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+    .model-id {
+      font-family: ui-monospace, monospace;
+      color: var(--text-heading);
+      font-weight: 500;
+    }
+    .pill {
+      display: inline-block;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      border-radius: 4px;
+      margin-right: 0.25rem;
+    }
+    .pill.verified { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+    .pill.unverified { background: rgba(139, 148, 158, 0.15); color: #8b949e; }
+    .code-box {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.825rem;
+      overflow-x: auto;
+      color: #79c0ff;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+      font-size: 0.8rem;
+      color: #8b949e;
+      text-align: center;
+    }
+    #loading {
+      text-align: center;
+      padding: 3rem;
+      color: #8b949e;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>⚡ NVIDIA NIM Model Health Status</h1>
+        <p class="sub">Dynamic model health tracking, availability metrics, and alias resolution.</p>
+      </div>
+      <div class="header-links">
+        <a href="./status.json" class="btn primary">View status.json</a>
+        <a href="https://github.com/Jaykay73/free-models" class="btn" target="_blank" rel="noopener">GitHub Repo</a>
+      </div>
+    </header>
+
+    <div id="loading">Loading live health telemetry from <code>status.json</code>...</div>
+
+    <div id="content" style="display: none;">
+      <div class="meta-bar">
+        <span>Status: <span id="health-badge"></span></span>
+        <span>Generated: <strong id="generated-at">-</strong></span>
+        <span>Valid Until: <strong id="valid-until">-</strong></span>
+        <span>Run ID: <strong id="run-id">-</strong></span>
+      </div>
+
+      <section>
+        <h2>Routing Aliases</h2>
+        <div class="aliases-grid" id="aliases-container"></div>
+      </section>
+
+      <section>
+        <h2>Monitored Catalog Models</h2>
+        <div class="models-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Model Identifier</th>
+                <th>Circuit Status</th>
+                <th>Availability</th>
+                <th>TTFT (p50)</th>
+                <th>Total Latency</th>
+                <th>Capabilities</th>
+              </tr>
+            </thead>
+            <tbody id="models-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Quick Client Integration</h2>
+        <p style="margin-bottom: 0.75rem; font-size: 0.9rem; color: #8b949e;">Point your application's client helper directly to this endpoint:</p>
+        <div class="code-box">https://jaykay73.github.io/free-models/status.json</div>
+      </section>
+    </div>
+
+    <footer>
+      Updated automatically by GitHub Actions health probes. Powered by <a href="https://github.com/Jaykay73/free-models" style="color: var(--blue);">Jaykay73/free-models</a>.
+    </footer>
+  </div>
+
+  <script>
+    async function loadStatus() {
+      try {
+        const res = await fetch('./status.json?t=' + Date.now());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--red);">Error loading status.json: ' + err.message + '</p>' +
+          '<p style="margin-top: 0.5rem;"><a href="./status.json" class="btn">Try direct status.json</a></p>';
+      }
+    }
+
+    function render(data) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+
+      const health = data.health || 'ok';
+      const badge = document.getElementById('health-badge');
+      badge.className = 'badge ' + health;
+      badge.innerHTML = '<span class="dot"></span> ' + health;
+
+      document.getElementById('generated-at').textContent = new Date(data.generated_at).toLocaleString();
+      document.getElementById('valid-until').textContent = new Date(data.valid_until).toLocaleString();
+      document.getElementById('run-id').textContent = data.run_id;
+
+      // Aliases
+      const aliasesContainer = document.getElementById('aliases-container');
+      aliasesContainer.innerHTML = '';
+      for (const [name, info] of Object.entries(data.aliases || {})) {
+        const card = document.createElement('div');
+        card.className = 'alias-card';
+        card.innerHTML = `
+          <div class="alias-name">
+            <span>${name}</span>
+            ${info.stale ? '<span class="badge stale">STALE</span>' : ''}
+          </div>
+          <div class="alias-primary">${info.primary || 'No candidate'}</div>
+          <div class="alias-fallbacks">Fallbacks: ${info.fallbacks && info.fallbacks.length ? info.fallbacks.join(', ') : 'None'}</div>
+        `;
+        aliasesContainer.appendChild(card);
+      }
+
+      // Models
+      const modelsBody = document.getElementById('models-body');
+      modelsBody.innerHTML = '';
+      for (const [id, m] of Object.entries(data.models || {})) {
+        const row = document.createElement('tr');
+        const caps = m.capability_verified || {};
+        const capPills = Object.entries(caps).map(([c, ok]) =>
+          `<span class="pill ${ok ? 'verified' : 'unverified'}">${c}: ${ok ? '✓' : '✗'}</span>`
+        ).join('');
+
+        row.innerHTML = `
+          <td class="model-id">${id}</td>
+          <td><span class="badge ${m.status === 'closed' ? 'ok' : 'stale'}">${m.status}</span></td>
+          <td>${(m.availability * 100).toFixed(0)}%</td>
+          <td>${m.p50_ttft_ms != null ? m.p50_ttft_ms.toFixed(0) + ' ms' : '-'}</td>
+          <td>${m.p50_total_ms != null ? m.p50_total_ms.toFixed(0) + ' ms' : '-'}</td>
+          <td>${capPills || '<span style="color:#8b949e">-</span>'}</td>
+        `;
+        modelsBody.appendChild(row);
+      }
+    }
+
+    loadStatus();
+    setInterval(loadStatus, 30000);
+  </script>
+</body>
+</html>
