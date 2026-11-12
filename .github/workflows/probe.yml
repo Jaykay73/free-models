@@ -1,0 +1,48 @@
+name: Probe NVIDIA models
+on:
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt && pip install --no-deps -e .
+      - name: Verify offline suite on Python 3.12
+        run: python -m pytest -q
+      - name: Probe (only step receiving the NVIDIA secret)
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          # GitHub masks repository secrets automatically; do not echo the key.
+          python -m nimstatus.main --data-dir data
+      - name: Persist history and meaningful status updates
+        working-directory: data
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add history.json status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Update probe state'
+          for attempt in 1 2 3; do
+            if git push origin HEAD:data; then exit 0; fi
+            # A conflicting external state update is an error; never overwrite it.
+            git pull --rebase origin data || exit 1
+          done
+          exit 1

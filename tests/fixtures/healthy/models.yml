@@ -1,0 +1,22 @@
+settings:
+  base_url: https://integrate.api.nvidia.com/v1
+  probe_timeout_s: 30
+  max_models_per_run: 40
+  exclude_patterns: [embed, rerank, guard, translate, parse, clip, safety]
+models:
+  vendor/example-small-instruct:
+    tier: small
+    capabilities: [chat]
+    preference: 0
+  vendor/example-large-instruct:
+    tier: large
+    capabilities: [chat, tools, json]
+  vendor/example-coder:
+    tier: medium
+    capabilities: [chat, code, json]
+aliases:
+  fast: {min_tier: small, require: [chat], prefer_speed: true}
+  general: {min_tier: medium, require: [chat]}
+  code: {min_tier: medium, require: [chat, code]}
+  tools: {min_tier: medium, require: [chat, tools]}
+  json: {min_tier: small, require: [chat, json]}

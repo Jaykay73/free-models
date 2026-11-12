@@ -1,0 +1,19 @@
+name: Keep schedules enabled
+on:
+  schedule:
+    - cron: '23 9 1,15 * *'
+  workflow_dispatch:
+permissions:
+  actions: write
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Re-enable both schedules
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh workflow enable probe.yml
+          gh workflow enable keepalive.yml

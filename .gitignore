@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.venv/
+data/
+build/
+dist/
+.python/
+.uv-cache/
+python312.tar.gz

@@ -1,0 +1,29 @@
+# Models selected from live NVIDIA NIM catalog
+settings:
+  base_url: https://integrate.api.nvidia.com/v1
+  probe_timeout_s: 30
+  max_models_per_run: 40
+  exclude_patterns: [embed, rerank, guard, translate, parse, clip, safety]
+models:
+  nvidia/nemotron-3.5-bolt-e4b:
+    tier: small
+    capabilities: [chat, tools, json]
+    preference: 0
+  poolside/laguna-xs-2.1:
+    tier: medium
+    capabilities: [chat, code, tools, json]
+    preference: 0
+  mistralai/mistral-large-4-1t-a52b:
+    tier: large
+    capabilities: [chat, tools]
+    preference: 0
+  nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:
+    tier: medium
+    capabilities: [chat]
+    preference: 0
+aliases:
+  fast: {min_tier: small, require: [chat], prefer_speed: true}
+  general: {min_tier: medium, require: [chat]}
+  code: {min_tier: medium, require: [chat, code]}
+  tools: {min_tier: medium, require: [chat, tools]}
+  json: {min_tier: small, require: [chat, json]}

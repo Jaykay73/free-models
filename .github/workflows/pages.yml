@@ -1,0 +1,24 @@
+name: Refresh branch-source Pages
+on:
+  workflow_run:
+    workflows: [Probe NVIDIA models]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  pages: write
+concurrency:
+  group: pages-build-request
+  cancel-in-progress: false
+jobs:
+  rebuild:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # No checkout, untrusted artifacts, inference secret, or execution of data-branch code.
+      - name: Request a build of the configured Pages source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh api --method POST "repos/$GH_REPO/pages/builds"

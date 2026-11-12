@@ -1,0 +1,22 @@
+{
+  "discovery": {"body": {"object": "list", "data": [
+    {"id": "vendor/example-small-instruct", "object": "model"},
+    {"id": "vendor/example-large-instruct", "object": "model"},
+    {"id": "vendor/example-coder", "object": "model"},
+    {"id": "vendor/new-chat"}, {"id": "vendor/new-embed"}
+  ]}},
+  "models": {
+    "vendor/example-small-instruct": {
+      "liveness": {"sse": "data: {\"choices\":[{\"delta\":{\"content\":\"PONG\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"}
+    },
+    "vendor/example-large-instruct": {
+      "liveness": {"body": {"choices": [{"message": {"content": "<think>thinking</think>PONG"}, "finish_reason": "stop"}]}},
+      "tools": {"body": {"choices": [{"message": {"tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]}, "finish_reason": "tool_calls"}]}},
+      "json": {"body": {"choices": [{"message": {"content": "{\"ok\":true}"}, "finish_reason": "stop"}]}}
+    },
+    "vendor/example-coder": {
+      "liveness": {"body": {"choices": [{"message": {"content": "PONG"}, "finish_reason": "stop"}]}},
+      "json": {"body": {"choices": [{"message": {"content": "{\"ok\":true}"}, "finish_reason": "stop"}]}}
+    }
+  }
+}
