@@ -109,8 +109,8 @@ Never expose your NVIDIA key in browser JavaScript. Only the public status fetch
 
 ## Failure behavior
 
-Both helpers cache per URL in memory and retain the previous good document if a refresh fails. Optional supplied defaults provide an emergency route; they are not required for normal use. Without defaults or a prior cache, failure to fetch a usable alias means Python `resolve` returns an empty list and `ModelRouter.primary`/`call` raise `NoModelsAvailable`. The cache does not survive restarts. Expired or stale routing produces a warning and remains usable. Defaults are not currently appended after every exhausted nonempty remote list. The Python helper's socket timeout is three seconds but is not yet a strict total deadline; do not make process startup depend on a successful fetch.
+Both clients cache per URL in memory and retain the previous good document if a refresh fails. Optional defaults provide an emergency route. Without defaults or a prior cache, failure to fetch a usable alias means Python `resolve` returns an empty list and `ModelRouter.primary` and `call` raise `NoModelsAvailable`. The Python client waits up to three seconds for a directory fetch. Expired routes can still be returned with a warning.
 
 Your applications no longer swap model IDs. The monitor maintainer still tags newly discovered models in `models.yml`; every application using its aliases benefits from those central updates without changing application code.
 
-The existing six-hour publication heartbeat can make stable status expire between updates. Use your own fallback handling even when the JSON says `health: ok`. These are documented follow-up limitations, not fixed by the workflow hardening update.
+The directory expires 12 hours after generation. Check `generated_at` to see the age of the snapshot even while it is valid.

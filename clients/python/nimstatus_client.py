@@ -2,13 +2,17 @@
 from datetime import datetime, timezone
 import json
 import math
+from queue import Empty, Queue
 import sys
+from threading import BoundedSemaphore, Thread
 import time
 import urllib.request
 import warnings
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 DEFAULT_STATUS_URL = "https://jaykay73.github.io/free-models/status.json"
+_FETCH_TIMEOUT = 3
+_FETCH_SLOTS = BoundedSemaphore(4)
 _cache = {}
 
 
@@ -46,6 +50,36 @@ def _validate(data):
             raise ValueError("Invalid fallback")
     return data
 
+
+def _fetch_status(url):
+    """Limit the caller's wait even if DNS or a slow body blocks urllib."""
+    if not _FETCH_SLOTS.acquire(blocking=False):
+        return None
+    result = Queue(maxsize=1)
+
+    def fetch():
+        data = None
+        try:
+            with urllib.request.urlopen(url, timeout=_FETCH_TIMEOUT) as response:
+                raw = response.read(1_000_001)
+                if len(raw) <= 1_000_000:
+                    data = _validate(json.loads(raw))
+        except Exception:
+            pass
+        finally:
+            _FETCH_SLOTS.release()
+            result.put_nowait(data)
+
+    try:
+        Thread(target=fetch, daemon=True).start()
+    except RuntimeError:
+        _FETCH_SLOTS.release()
+        return None
+    try:
+        return result.get(timeout=_FETCH_TIMEOUT)
+    except Empty:
+        return None
+
 def resolve(alias, options=None, *, status_url=DEFAULT_STATUS_URL, ttl_s=300, defaults=None):
     """Return ordered names; warnings flag expired, retained or fallback routing.
 
@@ -61,22 +95,24 @@ def resolve(alias, options=None, *, status_url=DEFAULT_STATUS_URL, ttl_s=300, de
     now = time.monotonic()
     cached = _cache.get(status_url)
     if cached is None or now - cached["checked"] >= ttl_s:
-        try:
-            with urllib.request.urlopen(status_url, timeout=3) as response:
-                raw = response.read(1_000_001)
-                if len(raw) > 1_000_000:
-                    raise ValueError("Status document too large")
-                data = _validate(json.loads(raw))
+        data = _fetch_status(status_url)
+        if data is not None:
             cached = {"data": data, "checked": now, "failed": False}
-        except Exception:
+        else:
             cached = {"data": cached["data"] if cached else None, "checked": now, "failed": True}
         _cache[status_url] = cached
     data = cached["data"]
     entry = (data or {}).get("aliases", {}).get(alias, {})
     names = [entry.get("primary"), *entry.get("fallbacks", [])] if entry.get("primary") else []
-    if cached["failed"] or not names or entry.get("stale") or (data and datetime.now(timezone.utc) > datetime.fromisoformat(data["valid_until"].replace("Z", "+00:00"))):
-        warnings.warn("nimstatus: stale status or caller defaults in use", RuntimeWarning, stacklevel=2)
-    return list(dict.fromkeys(names or defaults.get(alias, [])))
+    fallback = defaults.get(alias, [])
+    if not names:
+        reason = "status directory unavailable" if cached["failed"] else "status directory has no route for this alias"
+        if fallback:
+            reason += ". Using configured defaults"
+        warnings.warn(f"nimstatus: {reason}", RuntimeWarning, stacklevel=2)
+    elif cached["failed"] or entry.get("stale") or datetime.now(timezone.utc) >= datetime.fromisoformat(data["valid_until"].replace("Z", "+00:00")):
+        warnings.warn("nimstatus: using a stale model route", RuntimeWarning, stacklevel=2)
+    return list(dict.fromkeys(names or fallback))
 
 def call_with_fallback(alias, fn, options=None, *, retryable=is_retryable, max_attempts=5, **resolve_options):
     """Try directory-selected models; optionally override error classification."""

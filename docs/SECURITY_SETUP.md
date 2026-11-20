@@ -1,6 +1,6 @@
 # Apply the security update
 
-The working-tree changes must be pushed before they affect GitHub. Branch-protection JSON files are prepared configuration, **not evidence that protection is already enabled**. This environment could not reach the authenticated GitHub API; `gh auth status` also reported an unusable login. No remote protections or deployment were changed here.
+The branch protection JSON files document the expected settings for this repository. Use the read commands below to verify the live settings before reapplying them.
 
 ## 1. Push the update and verify CI
 
@@ -66,4 +66,4 @@ python -m pip install --no-deps --no-build-isolation -e .
 python -m pytest -q
 ```
 
-The earlier review's client deadline, streamed response-size limits, and freshness-policy changes are separate follow-up work; this update prioritizes branch protection, dependency pins and workflow supply-chain exposure.
+The Python client has a three-second directory fetch deadline. The public directory expires after 12 hours and refreshes on the next successful probe once its two-hour heartbeat is due. Streamed probe response size limits remain follow-up work.

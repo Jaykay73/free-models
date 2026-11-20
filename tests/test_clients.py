@@ -4,10 +4,33 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from threading import Event
 from types import SimpleNamespace
 import urllib.error
 import pytest
 import nimstatus_client as client
+
+
+def test_directory_fetch_deadline_covers_blocked_body(monkeypatch):
+    release_body = Event()
+    finished = Event()
+
+    class SlowBody(Response):
+        def read(self, n):
+            release_body.wait(2)
+            return super().read(n)
+
+        def __exit__(self, *args):
+            finished.set()
+
+    monkeypatch.setattr(client, "_FETCH_TIMEOUT", 0.05)
+    monkeypatch.setattr(client.urllib.request, "urlopen", lambda *a, **kw: SlowBody({}))
+    try:
+        assert client._fetch_status("https://example.test/status.json") is None
+        assert not finished.is_set()
+    finally:
+        release_body.set()
+        finished.wait(2)
 
 class Response:
     def __init__(self, data):

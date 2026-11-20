@@ -109,7 +109,7 @@ Three consecutive timeout/server/network failures open the circuit. Backoff skip
 {
   "schema_version": 1,
   "generated_at": "2026-11-12T14:05:00Z",
-  "valid_until": "2026-11-12T14:45:00Z",
+  "valid_until": "2026-11-13T02:05:00Z",
   "health": "ok",
   "run_id": "local",
   "aliases": {"fast": {"primary": "<configured-id>", "fallbacks": [], "stale": false}},
@@ -128,7 +128,7 @@ Three consecutive timeout/server/network failures open the circuit. Backoff skip
 
 Times are UTC ISO 8601; latencies are milliseconds or null; `last_probed` may be null. Capability keys are absent until tested. Circuit states: `closed`, `open`, `unavailable`. Empty aliases carry `primary: null`, `fallbacks: []`, `stale: false`, and `reason`. A previous nonempty alias is retained with `stale: true` if it would become empty. `health` is `ok`, `degraded` for partial stale/empty aliases or discovery warnings, and `stale` if all aliases retain old routing. Clients should inspect per-alias stale flags too.
 
-`valid_until` is generation time + four configured intervals. A status rewrite occurs for routing, circuit, listing, capability, classification or health/note changes, or after a six-hour heartbeat. Score-only drift and timestamps do not trigger publication. **This means a stable document intentionally expires between heartbeats**: clients continue using it with a stale warning. If you need consistently fresh documents, shorten the heartbeat policy or change the publication policy deliberately; the monitor preserves the requested six-hour gate.
+`valid_until` is 12 hours after generation to allow for delays in GitHub's scheduled runs. The next successful run rewrites the directory when routing or health changes, the last publication is at least two hours old, or the directory is within two hours of expiry. Use `generated_at` to see the snapshot's age. Clients still warn and can use the last known route when the directory expires.
 
 `history.json` schema version 1 contains run count, last catalog, alias challenger streaks, circuits, capability results with timestamps, and 48h of raw probe records. On disk records use `{base, rows}`: each row is `[seconds_since_base, ok_0_or_1, http_status, error_index, ttft_ms, total_ms, canary_0_or_1]`. Error enum order is `ok, timeout, throttled, server_error, not_found, auth, client_error, network, malformed`. Timing is rounded to milliseconds. `history.load` exposes named records; older named-record input is also accepted. Older records become fixed-size lifetime counts and an EWMA. Typical 40-model history fits below 500 KB; more configured models or faster schedules increase size. JSON writes use temporary files and rename; both documents are validated/prepared before writing, but the pair is not a filesystem-wide atomic transaction. Corrupt or missing history warns and starts fresh.
 
@@ -138,7 +138,7 @@ An auth error aborts with `NVIDIA_API_KEY missing, invalid, or expired` and reco
 
 ## Client helpers
 
-Install the Python client with `pip install ./clients/python`, or copy the helper into your app. `ModelRouter` offers alias-only calls with automatic error classification; see the [model-ID-free quickstart](docs/USAGE.md). The lower-level functions below remain compatible. Both languages resolve `[primary, ...fallbacks]`, deduplicated; cache per URL for ≥300 seconds, keep the last good copy on fetch errors, use optional caller-provided defaults when needed, and warn when retained/expired/default routing is used. Python's fetch timeout is three seconds per blocking operation. Failed refresh attempts are cached for the TTL as well. There is no background refresh. Keep the cache in a long-lived process/module; repeated process starts do not share it. JS shares concurrent in-flight fetches. Neither helper accepts an NVIDIA key.
+Install the Python client with `pip install nimstatus`. Both clients cache the directory for at least five minutes, keep the last good copy on fetch errors, and support optional defaults. The Python client waits up to three seconds for a directory fetch. This deadline applies to model lookup. Inference uses your SDK's timeout. See the [usage guide](docs/USAGE.md).
 
 Python (helper is stdlib-only; the SDK belongs to **your application**):
 
@@ -187,7 +187,7 @@ Caller classification controls retries: auth and bad requests must return false 
 
 ## Limitations and troubleshooting
 
-- GitHub cron runs can lag: expect actual cadence around 10–25 minutes, sometimes longer. The cron avoids the top of the hour. Pages/CDN may lag by several more minutes. Cache about five minutes and **never poll more often**. `valid_until` detects stale data; availability of this service must not be required to start your app.
+- GitHub schedules probes every ten minutes, but actual runs can be hours apart. Pages can add several minutes of caching. Cache for at least five minutes and check `generated_at` and `valid_until` to see the age of the directory.
 - A single GitHub-hosted probe location is one vantage point. Your region, quota and key may behave differently. A healthy probe is not a quality guarantee, a code benchmark, or proof of reliable long completions. Trial access, model support and terms may change.
 - Empty aliases on first run: replace placeholder IDs, check the current catalog, tiers and required capabilities. Tools/JSON aliases wait for successful verification. Some models need a larger token allowance for visible output.
 - Auth failure: check the secret's spelling, expiration and account permissions. No automatic key rotation exists. Discovery may work even when inference permissions fail. Never post credentials or request dumps in issues.
@@ -208,7 +208,7 @@ Caller classification controls retries: auth and bad requests must return false 
 7. Compatibility requests for explicitly unsupported streaming/JSON options are allowed exceptions to no retry; each counts toward the hard budget. Discovery is one additional GET outside the POST budget.
 8. Availability weights use a six-hour half-life, medians use successful probes only, and no samples imply zero availability. Exponential circuit backoff is measured in runs; unavailable models use wall-clock days. The global guard is conservative even for small sample sizes.
 9. Aliases exclude zero-availability candidates; speed weighting applies to challenger comparisons too. Challenger streaks count successful evaluated runs and survive history commits; failed whole runs neither advance nor reset them.
-10. An outage log note satisfies diagnostics while preserving both previous files. A history file is committed each successful run to preserve ephemeral-runner state; meaningful-change gating applies to public status rewrites. Six-hour heartbeats intentionally allow stable status to expire between updates.
+10. Outage notes go to the workflow log. Successful runs save history and refresh the public snapshot at the next opportunity after the two-hour heartbeat.
 11. A previous nonempty alias is treated as last-known-good, even if already stale. Repeated degradation can retain it indefinitely; consumers must heed stale warnings and use application defaults/fallbacks.
 12. Default 40-model/10-minute operation is the history-size target. Compact raw rows round latency to milliseconds. Both file writes are individually atomic, not jointly transactional against disk/process failure.
 13. The data branch and Pages are created by the owner; `main` is the default branch; organization policy allows the documented token permissions and Pages build API. Actions use immutable commit SHAs and CI dependencies use the complete hash lock. GitHub hosted Ubuntu has `gh` installed. The probe job has read-only repository access; a separate job validates JSON artifacts and commits with write access. `pages.yml` requests branch-source builds after successful probe workflow completion or manual dispatch. Separate `ci.yml` runs secret-free tests for pull requests and main pushes.
