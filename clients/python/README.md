@@ -85,8 +85,7 @@ discover a model during an outage without some available source of model names.
 
 Only synchronous calls are supported. Fallback handles failures raised by the
 callback, not errors while consuming a returned streaming iterator. The current
-urllib timeout is three seconds per blocking operation, not a strict total
-deadline. Defaults are used when no route is available, not appended after an
+directory fetch has a three-second caller deadline. Defaults apply when no route is available and are not appended after an
 otherwise nonempty remote route. Stale routing can currently be retained
 indefinitely. Do not depend on a successful directory fetch to start your app.
 

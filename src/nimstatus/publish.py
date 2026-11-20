@@ -6,6 +6,9 @@ from pathlib import Path
 from .history import parse, stamp
 from .scoring import metrics, rank_alias
 
+STATUS_LIFETIME = timedelta(hours=12)
+STATUS_HEARTBEAT = timedelta(hours=2)
+
 def read_status(path):
     try:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -68,7 +71,7 @@ def build(config, state, previous, now, unknown, notes, run_id):
         raise ValueError("Refusing publication: all aliases are empty")
     stale = sum(a["stale"] for a in aliases.values())
     value = dict(schema_version=1, generated_at=stamp(now),
-        valid_until=stamp(now+timedelta(minutes=4*config["settings"]["interval_minutes"])),
+        valid_until=stamp(now + STATUS_LIFETIME),
         health="stale" if stale == len(aliases) else "degraded" if stale or notes or any(a["primary"] is None for a in aliases.values()) else "ok",
         run_id=str(run_id), aliases=aliases, models={k: {x: y for x, y in m.items() if x != "latency_factor"} for k, m in models.items()},
         unclassified=unknown, notes=notes)
@@ -80,4 +83,9 @@ def meaningful(value):
                 models={k: {key: m[key] for key in ("status", "listed", "capability_verified")} for k, m in value["models"].items()})
 
 def should_publish(previous, value, now):
-    return previous is None or meaningful(previous) != meaningful(value) or (now-parse(previous["generated_at"])).total_seconds() >= 21600
+    return (
+        previous is None
+        or meaningful(previous) != meaningful(value)
+        or now - parse(previous["generated_at"]) >= STATUS_HEARTBEAT
+        or parse(previous["valid_until"]) - now <= STATUS_HEARTBEAT
+    )

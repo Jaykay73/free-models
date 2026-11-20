@@ -1,6 +1,6 @@
 # Apply the security update
 
-The working-tree changes must be pushed before they affect GitHub. Branch-protection JSON files are prepared configuration, **not evidence that protection is already enabled**. This environment could not reach the authenticated GitHub API; `gh auth status` also reported an unusable login. No remote protections or deployment were changed here.
+The branch protection JSON files document the expected settings for this repository. Use the read commands below to verify the live settings before reapplying them.
 
 ## 1. Push the update and verify CI
 
@@ -47,7 +47,7 @@ If publishing reports that the data revision changed, rerun the probe. The publi
 
 ## Security boundaries
 
-- `setuptools` is pinned to 80.9.0 and `pytest` to 9.0.3, beyond the fixes identified in the review. PyYAML is pinned to 6.0.3.
+- `setuptools` is pinned to 84.2.1, `pytest` to 9.0.3, and PyYAML to 6.0.3.
 - `requirements.lock` pins direct, transitive and build dependencies with SHA-256 wheel hashes from PyPI release metadata. CI uses `--require-hashes --only-binary=:all:`; no source distribution or editable package build runs in CI.
 - Actions use full commit SHAs resolved from their official repositories. Dependabot proposes weekly action and Python dependency updates; review them before merging.
 - The probe job has only `contents: read` and checkout credentials are not persisted. Only its probe step receives `NVIDIA_API_KEY`. `NIMSTATUS_ALLOWED_ORIGIN` restricts that key to the NVIDIA origin even if `models.yml` changes.
@@ -66,4 +66,4 @@ python -m pip install --no-deps --no-build-isolation -e .
 python -m pytest -q
 ```
 
-The earlier review's client deadline, streamed response-size limits, and freshness-policy changes are separate follow-up work; this update prioritizes branch protection, dependency pins and workflow supply-chain exposure.
+The Python client has a three-second directory fetch deadline. The public directory expires after 12 hours and refreshes on the next successful probe once its two-hour heartbeat is due. Streamed probe response size limits remain follow-up work.

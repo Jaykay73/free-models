@@ -154,7 +154,10 @@ def test_schema_and_publication(cfg):
     copy_value["models"][next(iter(cfg["models"]))]["score"] = .123
     copy_value["generated_at"] = history.stamp(NOW+timedelta(minutes=10))
     assert not publish.should_publish(value, copy_value, NOW+timedelta(minutes=10))
-    assert publish.should_publish(value, copy_value, NOW+timedelta(hours=6))
+    assert history.parse(value["valid_until"]) == NOW + timedelta(hours=12)
+    assert publish.should_publish(value, copy_value, NOW+timedelta(hours=2))
+    old = value | {"valid_until": history.stamp(NOW + timedelta(minutes=40))}
+    assert publish.should_publish(old, copy_value, NOW)
     for change in ("status", "capability_verified", "listed"):
         changed = copy.deepcopy(value)
         m = changed["models"][next(iter(cfg["models"]))]

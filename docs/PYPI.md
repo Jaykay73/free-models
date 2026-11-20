@@ -1,6 +1,8 @@
 # Release nimstatus to PyPI
 
-The public package is built from `clients/python`. Version 0.1.0 supports `from nimstatus import ModelRouter` and retains the previous `nimstatus_client` import.
+The public package is built from `clients/python`. Use `from nimstatus import ModelRouter`. The package also supports the previous `nimstatus_client` import.
+
+In this repository, `main` requires a pull request and the **Offline tests** check. Only the repository owner can create `v*` tags under the current ruleset. These tags cannot be moved or deleted under the active rules.
 
 1. Merge the release workflow and package changes into `main`.
 2. In [GitHub repository environments](https://github.com/Jaykay73/free-models/settings/environments), create the `pypi` environment. Under deployment branches and tags, select `main` as a branch and `v*` as a tag pattern. Add a required reviewer if you have a second maintainer who can approve releases.
