@@ -2,11 +2,34 @@
 from datetime import datetime, timezone
 import json
 import math
+import sys
 import time
 import urllib.request
 import warnings
 
+__version__ = "0.1.0"
+DEFAULT_STATUS_URL = "https://jaykay73.github.io/free-models/status.json"
 _cache = {}
+
+
+class NoModelsAvailable(RuntimeError):
+    """Neither the directory, cache nor optional defaults supplied a model."""
+
+
+def is_retryable(error):
+    """Retry 429/5xx and connection/timeouts; never retry auth or bad requests.
+
+    Recognizes OpenAI SDK connection/timeout exceptions if the caller has
+    imported that SDK. The SDK is not a dependency of this library.
+    """
+    status = getattr(error, "status_code", getattr(error, "code", None))
+    if type(status) is int:
+        return status == 429 or 500 <= status <= 599
+    if isinstance(error, (TimeoutError, ConnectionError)):
+        return True
+    sdk = sys.modules.get("openai")
+    connection_error = getattr(sdk, "APIConnectionError", None)
+    return isinstance(connection_error, type) and isinstance(error, connection_error)
 
 def _validate(data):
     if not isinstance(data, dict) or data.get("schema_version") != 1 or not isinstance(data.get("aliases"), dict):
@@ -23,7 +46,7 @@ def _validate(data):
             raise ValueError("Invalid fallback")
     return data
 
-def resolve(alias, options=None, *, status_url=None, ttl_s=300, defaults=None):
+def resolve(alias, options=None, *, status_url=DEFAULT_STATUS_URL, ttl_s=300, defaults=None):
     """Return ordered names; warnings flag expired, retained or fallback routing.
 
     Accepts an options dict for parity with JavaScript, or Python keyword args.
@@ -55,16 +78,65 @@ def resolve(alias, options=None, *, status_url=None, ttl_s=300, defaults=None):
         warnings.warn("nimstatus: stale status or caller defaults in use", RuntimeWarning, stacklevel=2)
     return list(dict.fromkeys(names or defaults.get(alias, [])))
 
-def call_with_fallback(alias, fn, options=None, *, retryable, max_attempts=5, **resolve_options):
-    """Caller classifies exceptions; auth and bad requests should return False."""
+def call_with_fallback(alias, fn, options=None, *, retryable=is_retryable, max_attempts=5, **resolve_options):
+    """Try directory-selected models; optionally override error classification."""
     if type(max_attempts) is not int or max_attempts < 1:
         raise ValueError("max_attempts must be positive")
     models = resolve(alias, options, **resolve_options)[:max_attempts]
     if not models:
-        raise RuntimeError("No models available for alias")
+        raise NoModelsAvailable("No models available: directory/cache/defaults have no route for the requested alias")
     for index, model in enumerate(models):
         try:
             return fn(model)
         except Exception as exc:
             if not retryable(exc) or index == len(models)-1:
                 raise
+
+
+class ModelRouter:
+    """Choose aliases once; refresh model names automatically through the cache.
+
+    No API keys or inference SDK objects are accepted. `call` invokes caller
+    code with a model name, leaving inference and credentials in the app.
+    Instances share the process-local per-URL cache. Construction does no I/O.
+    """
+
+    def __init__(self, *, status_url=DEFAULT_STATUS_URL, ttl_s=300, defaults=None,
+                 max_attempts=5, retryable=is_retryable):
+        if not isinstance(status_url, str) or not status_url:
+            raise ValueError("status_url must be a nonempty string")
+        if type(ttl_s) not in (int, float) or not math.isfinite(ttl_s) or ttl_s < 300:
+            raise ValueError("ttl_s must be at least 300")
+        if type(max_attempts) is not int or max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
+        if not callable(retryable):
+            raise ValueError("retryable must be callable")
+        if defaults is not None and (not isinstance(defaults, dict) or any(
+            not isinstance(alias, str) or not isinstance(models, (list, tuple)) or
+            any(not isinstance(model, str) or not model for model in models)
+            for alias, models in defaults.items()
+        )):
+            raise ValueError("defaults must map aliases to lists of model names")
+        self.options = dict(status_url=status_url, ttl_s=ttl_s,
+                            defaults={a: list(m) for a, m in (defaults or {}).items()})
+        self.max_attempts, self.retryable = max_attempts, retryable
+
+    def resolve(self, alias="fast"):
+        """Return the primary and fallbacks, refreshing at most once per TTL."""
+        return resolve(alias, self.options)
+
+    def primary(self, alias="fast"):
+        """Return the current primary. Prefer `call` for automatic fallback."""
+        models = self.resolve(alias)
+        if not models:
+            raise NoModelsAvailable("No models available for the requested alias")
+        return models[0]
+
+    def call(self, alias, fn):
+        """Run fn(model_name), falling back on retryable failures.
+
+        Synchronous only. Exceptions while consuming a returned stream occur
+        outside this call and must be handled by the application.
+        """
+        return call_with_fallback(alias, fn, self.options, retryable=self.retryable,
+                                  max_attempts=self.max_attempts)

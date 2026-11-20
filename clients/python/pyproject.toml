@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nimstatus"
+version = "0.1.0"
+description = "Resolve NVIDIA model aliases and fail over using a public health directory"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/Jaykay73/free-models"
+Documentation = "https://github.com/Jaykay73/free-models/blob/main/docs/USAGE.md"
+
+[tool.setuptools]
+py-modules = ["nimstatus", "nimstatus_client"]

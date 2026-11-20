@@ -4,45 +4,82 @@ on:
     - cron: '7,17,27,37,47,57 * * * *'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: probe
   cancel-in-progress: false
 jobs:
   probe:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: data
+          path: data
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install verified wheels
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+      - name: Verify offline suite
+        run: python -m pytest -q
+      - name: Record data revision
+        run: git -C data rev-parse HEAD > base-revision.txt
+      - name: Probe (only step receiving the NVIDIA secret)
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NIMSTATUS_ALLOWED_ORIGIN: https://integrate.api.nvidia.com
+          PYTHONPATH: src
+        run: python -m nimstatus.main --data-dir data
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: probe-state
+          path: |
+            data/history.json
+            data/status.json
+            base-revision.txt
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: data
           path: data
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install -r requirements.txt && pip install --no-deps -e .
-      - name: Verify offline suite on Python 3.12
-        run: python -m pytest -q
-      - name: Probe (only step receiving the NVIDIA secret)
-        env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-        run: |
-          # GitHub masks repository secrets automatically; do not echo the key.
-          python -m nimstatus.main --data-dir data
-      - name: Persist history and meaningful status updates
+          name: probe-state
+          path: incoming
+      - name: Validate bounded JSON and expected data revision
+        run: python3 -I source/scripts/validate_publication.py incoming data
+      - name: Commit validated state
         working-directory: data
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add history.json status.json
+          git add -- history.json status.json
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Update probe state'
           for attempt in 1 2 3; do
             if git push origin HEAD:data; then exit 0; fi
-            # A conflicting external state update is an error; never overwrite it.
             git pull --rebase origin data || exit 1
           done
           exit 1

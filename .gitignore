@@ -8,3 +8,8 @@ dist/
 .python/
 .uv-cache/
 python312.tar.gz
+.security-wheels/
+.security-venv/
+.env
+.env.*
+!.env.example

@@ -1,0 +1,7 @@
+# Independent required approvals need a second maintainer.
+/.github/ @Jaykay73
+/scripts/ @Jaykay73
+/src/ @Jaykay73
+/models.yml @Jaykay73
+/requirements* @Jaykay73
+/pyproject.toml @Jaykay73

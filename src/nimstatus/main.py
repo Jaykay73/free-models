@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 import httpx
 from . import config, discover, history, publish, scoring
 from .probe import Budget, Prober
@@ -40,6 +41,12 @@ async def run(args, *, transport=None, now=None):
     now = now or datetime.now(timezone.utc)
     cfg = config.load(args.config)
     settings = cfg["settings"]
+    # Deployment-controlled allowlist prevents configuration-only key redirection.
+    allowed_origin = os.environ.get("NIMSTATUS_ALLOWED_ORIGIN")
+    if allowed_origin and not args.offline:
+        parsed = urlsplit(settings["base_url"])
+        if parsed.scheme + "://" + parsed.netloc != allowed_origin:
+            raise RunError("Configured API origin is not allowed by this deployment")
     directory = Path(args.data_dir)
     state = copy.deepcopy(history.load(directory / "history.json"))
     previous = publish.read_status(directory / "status.json")

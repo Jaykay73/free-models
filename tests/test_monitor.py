@@ -240,9 +240,10 @@ def test_workflow_constraints():
     root = Path(__file__).resolve().parents[1]
     workflow = yaml.load((root/".github/workflows/probe.yml").read_text(), Loader=yaml.BaseLoader)
     assert set(workflow["on"]) == {"schedule", "workflow_dispatch"}
-    assert workflow["permissions"] == {"contents": "write"}
+    assert workflow["permissions"] == {"contents": "read"}
     steps = workflow["jobs"]["probe"]["steps"]
     assert sum("NVIDIA_API_KEY" in s.get("env", {}) for s in steps) == 1
+    assert workflow["jobs"]["publish"]["permissions"] == {"contents": "write"}
 
 def test_dry_run(tmp_path, cfg, recorded, capsys):
     a = args(tmp_path, cfg, recorded)

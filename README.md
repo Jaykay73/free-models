@@ -1,5 +1,9 @@
 # nim-model-status
 
+After the first PyPI release, Python applications can install the client with `python -m pip install nimstatus` and import it with `from nimstatus import ModelRouter`. The [release guide](docs/PYPI.md) covers maintainer setup and publishing.
+
+**Using the deployed service:** [Python and JavaScript examples](docs/USAGE.md). The [installable Python library](clients/python/README.md) lets applications call aliases without hardcoded model IDs. **Applying the security update:** [deployment and branch-protection instructions](docs/SECURITY_SETUP.md). The protection files must be applied to GitHub; committing them alone does not protect branches.
+
 A GitHub Actions health monitor for NVIDIA's hosted API catalog. It discovers models, makes tiny health requests using **one maintainer-owned key**, and publishes ranked model names as static JSON on GitHub Pages. Applications fetch those names and call NVIDIA directly using their own credentials.
 
 This service is **not a proxy**. It has no server, receives no application inference traffic or user keys, and implements no key pooling, account rotation or rate-limit evasion. GitHub's public repository, Actions and Pages allowances provide the hosting; check their current limits before use at scale.
@@ -73,15 +77,15 @@ Requires Python 3.12 and Git. The commands below use Bash (Git Bash works on Win
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install --no-deps -e .
+pip install --require-hashes --only-binary=:all: -r requirements.lock
+pip install --no-deps --no-build-isolation -e .
 pytest -q
 python -m nimstatus.main --offline tests/fixtures/healthy --dry-run
 ```
 
 On PowerShell activate with `.venv\Scripts\Activate.ps1`. Online runs read `NVIDIA_API_KEY` from the environment. Never paste it into commands that enter shell history. `--dry-run` still makes probes unless paired with `--offline`; it writes no files. `--data-dir PATH` defaults to `data`, `--config PATH` defaults to `models.yml`. Nonzero exit means publication failed. Offline mode needs no secret and uses `responses.json`: a discovery HTTP envelope and per-model `liveness`, `tools`, `json` HTTP envelopes, optional SSE text or simulated `network`/`timeout` errors. Tests prohibit real httpx transport; JS tests replace fetch. `pytest` also invokes Node client tests if Node 18+ is installed (otherwise explicitly skips them); run `node --test tests/client.test.mjs` separately if desired.
 
-Development validation: 32 pytest tests and the standalone Node test pass locally; the fixture dry run succeeds. The development machine provided Python 3.11.0, httpx 0.28.1, PyYAML 6.0.3, pytest 9.1.1 and Node 24.11.1. Downloading Python 3.12 was unsuccessful, so exact Python 3.12/pinned-dependency validation is not claimed locally. The probe workflow installs the pinned requirements and runs the offline suite on Python 3.12 **before** the sole secret-bearing step. Live account access, push permissions, Pages delivery and CORS require owner verification during setup.
+Validation: the exact hash-locked dependencies install successfully in a clean local Python 3.11 environment; `pip check` passes and the suite reports 52 passed, 1 skipped (Windows cannot create the symlink used by that test). The standalone client wheel builds, installs and imports without runtime dependencies. Python 3.12 remains the monitor deployment target; the CI and probe workflows verify the updated suite there before any secret-bearing step. Live account access, the new publishing workflow, branch protections, Pages delivery and CORS require owner verification during deployment. See [security setup](docs/SECURITY_SETUP.md).
 
 ## Configuration and operation
 
@@ -134,7 +138,7 @@ An auth error aborts with `NVIDIA_API_KEY missing, invalid, or expired` and reco
 
 ## Client helpers
 
-Copy the helper into your app. Both return `[primary, ...fallbacks]`, deduplicated; cache per URL for ≥300 seconds, keep the last good copy on fetch errors, use caller-provided defaults when needed, and warn when retained/expired/default routing is used. Fetch timeout is three seconds. Failed refresh attempts are cached for the TTL as well. There is no background refresh. Keep the cache in a long-lived process/module; repeated process starts do not share it. JS shares concurrent in-flight fetches. Neither helper accepts an NVIDIA key.
+Install the Python client with `pip install ./clients/python`, or copy the helper into your app. `ModelRouter` offers alias-only calls with automatic error classification; see the [model-ID-free quickstart](docs/USAGE.md). The lower-level functions below remain compatible. Both languages resolve `[primary, ...fallbacks]`, deduplicated; cache per URL for ≥300 seconds, keep the last good copy on fetch errors, use optional caller-provided defaults when needed, and warn when retained/expired/default routing is used. Python's fetch timeout is three seconds per blocking operation. Failed refresh attempts are cached for the TTL as well. There is no background refresh. Keep the cache in a long-lived process/module; repeated process starts do not share it. JS shares concurrent in-flight fetches. Neither helper accepts an NVIDIA key.
 
 Python (helper is stdlib-only; the SDK belongs to **your application**):
 
@@ -207,7 +211,7 @@ Caller classification controls retries: auth and bad requests must return false 
 10. An outage log note satisfies diagnostics while preserving both previous files. A history file is committed each successful run to preserve ephemeral-runner state; meaningful-change gating applies to public status rewrites. Six-hour heartbeats intentionally allow stable status to expire between updates.
 11. A previous nonempty alias is treated as last-known-good, even if already stale. Repeated degradation can retain it indefinitely; consumers must heed stale warnings and use application defaults/fallbacks.
 12. Default 40-model/10-minute operation is the history-size target. Compact raw rows round latency to milliseconds. Both file writes are individually atomic, not jointly transactional against disk/process failure.
-13. The data branch and Pages are created by the owner; `main` is the default branch; organization policy allows the documented token permissions and Pages build API. Full action major tags are used. GitHub hosted Ubuntu has `gh` installed. A third workflow (`pages.yml`) is necessary to request branch-source builds after token pushes without broadening the probe workflow's permissions; it runs on probe completion or manual dispatch only.
+13. The data branch and Pages are created by the owner; `main` is the default branch; organization policy allows the documented token permissions and Pages build API. Actions use immutable commit SHAs and CI dependencies use the complete hash lock. GitHub hosted Ubuntu has `gh` installed. The probe job has read-only repository access; a separate job validates JSON artifacts and commits with write access. `pages.yml` requests branch-source builds after successful probe workflow completion or manual dispatch. Separate `ci.yml` runs secret-free tests for pull requests and main pushes.
 14. Keepalive and bot commits cannot guarantee perpetual scheduling. Monthly human checks, account notification preferences, client cache and expiry handling are required safeguards.
 15. Clients warn instead of returning metadata, require TTL ≥300 seconds, throttle failed refreshes too, and retain expired data indefinitely on fetch error. Their caches are process-local; users classify inference exceptions and control inference deadlines. No inference key passes through a helper.
 
