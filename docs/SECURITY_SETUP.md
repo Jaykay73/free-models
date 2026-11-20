@@ -47,7 +47,7 @@ If publishing reports that the data revision changed, rerun the probe. The publi
 
 ## Security boundaries
 
-- `setuptools` is pinned to 80.9.0 and `pytest` to 9.0.3, beyond the fixes identified in the review. PyYAML is pinned to 6.0.3.
+- `setuptools` is pinned to 84.2.1, `pytest` to 9.0.3, and PyYAML to 6.0.3.
 - `requirements.lock` pins direct, transitive and build dependencies with SHA-256 wheel hashes from PyPI release metadata. CI uses `--require-hashes --only-binary=:all:`; no source distribution or editable package build runs in CI.
 - Actions use full commit SHAs resolved from their official repositories. Dependabot proposes weekly action and Python dependency updates; review them before merging.
 - The probe job has only `contents: read` and checkout credentials are not persisted. Only its probe step receives `NVIDIA_API_KEY`. `NIMSTATUS_ALLOWED_ORIGIN` restricts that key to the NVIDIA origin even if `models.yml` changes.
