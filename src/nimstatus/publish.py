@@ -39,6 +39,7 @@ def validate(value):
     for mid, entry in value["models"].items():
         require(isinstance(mid, str) and isinstance(entry, dict))
         require(entry.get("status") in ("closed", "open", "unavailable"))
+        require(entry.get("kind", "chat") in ("chat", "embedding"))
         require(type(entry.get("listed")) is bool)
         for key in ("score", "availability"):
             require(type(entry.get(key)) in (int, float) and math.isfinite(entry[key]) and entry[key] >= 0)
@@ -60,6 +61,7 @@ def build(config, state, previous, now, unknown, notes, run_id):
         m = state["models"][mid]
         models[mid] = metrics(m, spec["preference"], now, config["settings"]) | dict(
             status=m["circuit"], listed=mid in state["catalog"],
+            kind="embedding" if "embedding" in spec["capabilities"] else "chat",
             capability_verified={c: v["ok"] for c, v in m["capabilities"].items()}, last_probed=m.get("last_probed"))
     aliases = {name: rank_alias(name, alias, config, state, models) for name, alias in config["aliases"].items()}
     for name, entry in aliases.items():
@@ -80,7 +82,7 @@ def build(config, state, previous, now, unknown, notes, run_id):
 
 def meaningful(value):
     return dict(aliases=value["aliases"], unclassified=value["unclassified"], health=value["health"], notes=value["notes"],
-                models={k: {key: m[key] for key in ("status", "listed", "capability_verified")} for k, m in value["models"].items()})
+                models={k: {key: m.get(key) for key in ("status", "listed", "kind", "capability_verified")} for k, m in value["models"].items()})
 
 def should_publish(previous, value, now):
     return (

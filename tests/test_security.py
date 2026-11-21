@@ -40,7 +40,7 @@ def test_valid_artifact_is_reserialized(artifact):
     publish.validate(json.loads((destination / "status.json").read_text()))
     assert history.load(destination / "history.json")["models"]
 
-@pytest.mark.parametrize("attack", ["extra_file", "revision", "duplicate_key", "oversize", "secret", "invalid_schema", "nonfinite", "invalid_history"])
+@pytest.mark.parametrize("attack", ["extra_file", "revision", "duplicate_key", "oversize", "secret", "invalid_schema", "invalid_model_kind", "nonfinite", "invalid_history"])
 def test_bad_artifact_never_replaces_previous_files(artifact, attack):
     incoming, destination = artifact
     status = incoming / "data/status.json"
@@ -59,6 +59,10 @@ def test_bad_artifact_never_replaces_previous_files(artifact, attack):
     elif attack == "invalid_schema":
         value = json.loads(status.read_text())
         value["run_shell"] = "unexpected"
+        status.write_text(json.dumps(value))
+    elif attack == "invalid_model_kind":
+        value = json.loads(status.read_text())
+        next(iter(value["models"].values()))["kind"] = "unknown"
         status.write_text(json.dumps(value))
     elif attack == "nonfinite":
         value = json.loads(status.read_text())

@@ -66,7 +66,8 @@ def validate_status(value):
     require(isinstance(value["models"], dict) and len(value["models"]) <= 1000)
     for mid, model in value["models"].items():
         identifier(mid)
-        fields(model, {"status", "listed", "score", "availability", "p50_total_ms", "p50_ttft_ms", "capability_verified", "last_probed"})
+        fields(model, {"status", "listed", "score", "availability", "p50_total_ms", "p50_ttft_ms", "capability_verified", "last_probed"}, {"kind"})
+        require(model.get("kind", "chat") in ("chat", "embedding"))
         require(model["status"] in {"closed", "open", "unavailable"} and type(model["listed"]) is bool)
         number(model["score"], maximum=2)
         number(model["availability"], maximum=1)
