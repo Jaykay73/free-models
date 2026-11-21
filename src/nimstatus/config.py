@@ -5,10 +5,10 @@ import re
 import yaml
 
 TIERS = {"small": 0, "medium": 1, "large": 2}
-CAPABILITIES = {"chat", "code", "tools", "json"}
+CAPABILITIES = {"chat", "code", "tools", "json", "embedding"}
 DEFAULTS = dict(base_url="https://integrate.api.nvidia.com/v1", auth_header="Authorization",
                 auth_scheme="Bearer", probe_timeout_s=30, max_models_per_run=40,
-                exclude_patterns=["embed", "rerank", "guard", "translate", "parse", "clip", "safety"],
+                exclude_patterns=["rerank", "guard", "translate", "parse", "clip", "safety"],
                 max_tokens=64, interval_minutes=10, latency_target_ms=3000,
                 latency_ceiling_ms=20000, half_life_hours=6)
 
@@ -54,6 +54,8 @@ def load(path: str | Path) -> dict:
         caps = model.get("capabilities")
         if not isinstance(caps, list) or not caps or any(c not in CAPABILITIES for c in caps):
             raise ValueError(f"Invalid capabilities for {name}")
+        if "embedding" in caps and set(caps) != {"embedding"}:
+            raise ValueError(f"Embedding models require a dedicated probe: {name}")
         pref = model.setdefault("preference", 0)
         if type(pref) not in (int, float) or not math.isfinite(pref) or not -1 <= pref <= 1:
             raise ValueError(f"preference for {name} must be between -1 and 1")

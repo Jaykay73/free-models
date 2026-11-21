@@ -147,6 +147,47 @@ def test_unclassified(cfg, recorded):
     unknown = discover.unclassified(ids, cfg)
     assert len(unknown) == 1 and "embed" not in unknown[0]
 
+@pytest.mark.parametrize(("vector", "expected"), [([0.125, -0.5], "ok"), ([], "malformed"),
+                                                   ([True], "malformed"), (["0.5"], "malformed"),
+                                                   ([float("inf")], "malformed")])
+def test_embedding_probe(cfg, vector, expected):
+    model = "vendor/example-embed"
+
+    def respond(request):
+        assert request.method == "POST" and request.url.path == "/v1/embeddings"
+        payload = json.loads(request.content)
+        assert payload == {"model": model, "input": ["NVIDIA embedding health check"],
+                           "input_type": "query", "encoding_format": "float"}
+        return httpx.Response(200, content=json.dumps({"data": [{"embedding": vector}]}))
+
+    async def probe():
+        budget = Budget(1, jitter=False)
+        async with httpx.AsyncClient(base_url=cfg["settings"]["base_url"], transport=httpx.MockTransport(respond)) as client:
+            prober = Prober(client, cfg["settings"], budget)
+            result = await prober.embedding(model, NOW)
+            assert await prober.embedding(model, NOW) is None
+            return result
+
+    result = asyncio.run(probe())
+    assert result["error_class"] == expected
+    assert result["ok"] is (expected == "ok")
+    assert result["ttft_ms"] is None
+
+def test_embedding_health_is_published_alongside_chat(tmp_path, cfg, recorded):
+    model = "vendor/new-embed"
+    cfg["models"][model] = {"tier": "small", "capabilities": ["embedding"]}
+    recorded["models"][model] = {"embedding": {"body": {"data": [{"embedding": [0.2, 0.3]}]}}}
+    run_args = args(tmp_path, cfg, recorded)
+
+    assert asyncio.run(main.run(run_args, now=NOW)) == 0
+    status = json.loads((Path(run_args.data_dir) / "status.json").read_text())
+    publish.validate(status)
+    assert status["models"][model]["availability"] == 1
+    assert status["models"][model]["last_probed"] == history.stamp(NOW)
+    assert model not in status["unclassified"]
+    for alias in status["aliases"].values():
+        assert model not in [alias["primary"], *alias["fallbacks"]]
+
 def test_schema_and_publication(cfg):
     value = publish.build(cfg, initial(cfg), None, NOW, [], [], "t")
     publish.validate(value)
