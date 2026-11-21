@@ -182,6 +182,12 @@ def test_embedding_health_is_published_alongside_chat(tmp_path, cfg, recorded):
     assert asyncio.run(main.run(run_args, now=NOW)) == 0
     status = json.loads((Path(run_args.data_dir) / "status.json").read_text())
     publish.validate(status)
+    assert status["models"][model]["kind"] == "embedding"
+    previous = copy.deepcopy(status)
+    for entry in previous["models"].values():
+        entry.pop("kind")
+    publish.validate(previous)
+    assert publish.should_publish(previous, status, NOW)
     assert status["models"][model]["availability"] == 1
     assert status["models"][model]["last_probed"] == history.stamp(NOW)
     assert model not in status["unclassified"]
