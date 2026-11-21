@@ -16,14 +16,17 @@ class RunError(Exception):
     """Only constant, credential-free operational messages are allowed here."""
 
 def offline_transport(directory):
-    """Fixtures contain discovery + per-model liveness/tools/json HTTP responses."""
+    """Fixtures contain discovery and per-model probe responses."""
     fixture = json.loads((Path(directory) / "responses.json").read_text(encoding="utf-8"))
     def handle(request):
         if request.method == "GET":
             item = fixture["discovery"]
         else:
             body = json.loads(request.content)
-            kind = "tools" if "tools" in body else "json" if "JSON" in body["messages"][0]["content"] else "liveness"
+            if request.url.path.endswith("/embeddings"):
+                kind = "embedding"
+            else:
+                kind = "tools" if "tools" in body else "json" if "JSON" in body["messages"][0]["content"] else "liveness"
             item = fixture["models"][body["model"]][kind]
         if item.get("error") == "network":
             raise httpx.ConnectError("Offline simulated failure", request=request)
@@ -92,6 +95,8 @@ async def run(args, *, transport=None, now=None):
             prober = Prober(client, settings, budget)
             # Complete liveness first so capability requests cannot starve rotation.
             async def live(mid):
+                if "embedding" in cfg["models"][mid]["capabilities"]:
+                    return mid, await prober.embedding(mid, now)
                 return mid, await prober.liveness(mid, now)
             batch = await asyncio.gather(*(live(mid) for mid in selected))
             for mid, rec in batch:

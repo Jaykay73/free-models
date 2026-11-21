@@ -16,6 +16,8 @@ Find `aliases` and look under `fast`. Each alias is a short name for a task and 
 
 At the top of the file, `generated_at` shows when the directory was published and `valid_until` shows when it expires. The `models` section shows the health and last check time for individual models. The checks use the maintainer's NVIDIA account, so access and usage limits can differ on your account.
 
+The monitor also checks NVIDIA's Nemotron embedding models, which turn text into vectors for search. Find their IDs under `models`. Each check sends a short text query to NVIDIA's embeddings endpoint and records whether it returned a valid vector. Embedding models can produce different vector dimensions and spaces, so the directory reports their health individually. [NVIDIA Retrieval API reference](https://docs.api.nvidia.com/nim/reference/retrieval-apis).
+
 | Alias | When to use it |
 | --- | --- |
 | `fast` | Quick chat and a good first test. |
