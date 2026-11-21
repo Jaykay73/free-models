@@ -36,3 +36,4 @@ aliases:
   code: {min_tier: medium, require: [chat, code]}
   tools: {min_tier: medium, require: [chat, tools]}
   json: {min_tier: small, require: [chat, json]}
+  embed: {min_tier: small, require: [embedding], prefer_speed: true}

@@ -15,8 +15,11 @@ Choose an alias:
 | `code` | Manually classified coding models |
 | `tools` | Models that passed the tool-call check |
 | `json` | Models that passed the JSON check |
+| `embed` | Embedding models that recently returned a valid vector |
 
 Each alias contains `primary`, up to four `fallbacks`, and a `stale` flag. `primary` can be null. Check the document's `valid_until` too. A healthy probe is not a model-quality or account-quota guarantee. Cache for at least five minutes; do not fetch before every inference request.
+
+Use `ModelRouter().resolve("embed")` to list embedding candidates. Send embedding requests to NVIDIA's `/v1/embeddings` endpoint. For a vector index, save the chosen model ID with the index and use that model for every document and query. If you change models, rebuild the index with the new model's vectors.
 
 ## Python
 

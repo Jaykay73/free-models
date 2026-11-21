@@ -174,9 +174,15 @@ def test_embedding_probe(cfg, vector, expected):
     assert result["ttft_ms"] is None
 
 def test_embedding_health_is_published_alongside_chat(tmp_path, cfg, recorded):
-    model = "vendor/new-embed"
-    cfg["models"][model] = {"tier": "small", "capabilities": ["embedding"]}
-    recorded["models"][model] = {"embedding": {"body": {"data": [{"embedding": [0.2, 0.3]}]}}}
+    model = "vendor/primary-embed"
+    backup = "vendor/second-embed"
+    throttled = "vendor/throttled-embed"
+    cfg["aliases"]["embed"] = {"min_tier": "small", "require": ["embedding"], "prefer_speed": True}
+    for mid, preference in ((model, 0.5), (backup, 0), (throttled, 0)):
+        cfg["models"][mid] = {"tier": "small", "capabilities": ["embedding"], "preference": preference}
+        recorded["discovery"]["body"]["data"].append({"id": mid})
+        recorded["models"][mid] = {"embedding": {"body": {"data": [{"embedding": [0.2, 0.3]}]}}}
+    recorded["models"][throttled] = {"embedding": {"status": 429}}
     run_args = args(tmp_path, cfg, recorded)
 
     assert asyncio.run(main.run(run_args, now=NOW)) == 0
@@ -191,8 +197,11 @@ def test_embedding_health_is_published_alongside_chat(tmp_path, cfg, recorded):
     assert status["models"][model]["availability"] == 1
     assert status["models"][model]["last_probed"] == history.stamp(NOW)
     assert model not in status["unclassified"]
-    for alias in status["aliases"].values():
-        assert model not in [alias["primary"], *alias["fallbacks"]]
+    assert status["models"][throttled]["availability"] > 0
+    assert status["aliases"]["embed"] == {"primary": model, "fallbacks": [backup], "stale": False}
+    for name, alias in status["aliases"].items():
+        if name != "embed":
+            assert {model, backup, throttled}.isdisjoint([alias["primary"], *alias["fallbacks"]])
 
 def test_schema_and_publication(cfg):
     value = publish.build(cfg, initial(cfg), None, NOW, [], [], "t")

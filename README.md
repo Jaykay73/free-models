@@ -16,7 +16,7 @@ Find `aliases` and look under `fast`. Each alias is a short name for a task and 
 
 At the top of the file, `generated_at` shows when the directory was published and `valid_until` shows when it expires. The `models` section shows the health and last check time for individual models. The checks use the maintainer's NVIDIA account, so access and usage limits can differ on your account.
 
-The monitor also checks NVIDIA's Nemotron embedding models, which turn text into vectors for search. Find their IDs under `models`. Each check sends a short text query to NVIDIA's embeddings endpoint and records whether it returned a valid vector. Embedding models can produce different vector dimensions and spaces, so the directory reports their health individually. [NVIDIA Retrieval API reference](https://docs.api.nvidia.com/nim/reference/retrieval-apis).
+The `embed` alias ranks NVIDIA's Nemotron embedding models that recently returned a valid vector. The dashboard's **Embedding models** section shows health for every monitored embedding model. If you use a vector index, choose a model when you create the index and keep using that exact model ID for both indexing and search. Switching models can require rebuilding the index. [NVIDIA Retrieval API reference](https://docs.api.nvidia.com/nim/reference/retrieval-apis).
 
 | Alias | When to use it |
 | --- | --- |
@@ -25,6 +25,7 @@ The monitor also checks NVIDIA's Nemotron embedding models, which turn text into
 | `code` | Coding tasks. Maintainers choose which models qualify. |
 | `tools` | Requests that use tool calling. |
 | `json` | Requests that need JSON output. |
+| `embed` | Choosing an embedding model for search or retrieval. |
 
 ## Use automatic switching in Python
 
