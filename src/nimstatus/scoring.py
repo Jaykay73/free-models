@@ -48,12 +48,13 @@ def rank_alias(name, alias, config, state, models):
     def score(mid):
         m = models[mid]
         return m["score"] * (m["latency_factor"] if alias.get("prefer_speed") else 1)
+    required = set(alias["require"])
     eligible = []
     for mid, spec in config["models"].items():
         m = models[mid]
-        required = set(alias["require"])
         if (m["listed"] and m["status"] == "closed" and m["availability"] > 0 and
             TIERS[spec["tier"]] >= TIERS[alias["min_tier"]] and required <= set(spec["capabilities"]) and
+            ("embedding" not in required or m["p50_total_ms"] is not None) and
             all(m["capability_verified"].get(c) is True for c in required & {"tools", "json"})):
             eligible.append(mid)
     eligible.sort(key=lambda m: (-score(m), m))
