@@ -248,6 +248,23 @@
         <span>Run ID: <strong id="run-id">-</strong></span>
       </div>
 
+      <section id="embedding-models" aria-labelledby="embedding-heading" hidden>
+        <h2 id="embedding-heading">Embedding models</h2>
+        <div class="models-table-wrap">
+          <table aria-labelledby="embedding-heading">
+            <thead>
+              <tr>
+                <th scope="col">Model identifier</th>
+                <th scope="col">Availability</th>
+                <th scope="col">Median latency</th>
+                <th scope="col">Last checked</th>
+              </tr>
+            </thead>
+            <tbody id="embedding-models-body"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section>
         <h2>Routing Aliases</h2>
         <div class="aliases-grid" id="aliases-container"></div>
@@ -331,8 +348,20 @@
       // Models
       const modelsBody = document.getElementById('models-body');
       modelsBody.innerHTML = '';
+      const embeddingBody = document.getElementById('embedding-models-body');
+      embeddingBody.replaceChildren();
       for (const [id, m] of Object.entries(data.models || {})) {
         const row = document.createElement('tr');
+        if (m.kind === 'embedding') {
+          const modelCell = row.insertCell();
+          modelCell.className = 'model-id';
+          modelCell.textContent = id;
+          row.insertCell().textContent = m.last_probed ? (m.availability * 100).toFixed(0) + '%' : 'Awaiting first check';
+          row.insertCell().textContent = m.p50_total_ms != null ? m.p50_total_ms.toFixed(0) + ' ms' : 'Unavailable';
+          row.insertCell().textContent = m.last_probed ? new Date(m.last_probed).toLocaleString() : 'Pending';
+          embeddingBody.appendChild(row);
+          continue;
+        }
         const caps = m.capability_verified || {};
         const capPills = Object.entries(caps).map(([c, ok]) =>
           `<span class="pill ${ok ? 'verified' : 'unverified'}">${c}: ${ok ? '✓' : '✗'}</span>`
@@ -348,6 +377,7 @@
         `;
         modelsBody.appendChild(row);
       }
+      document.getElementById('embedding-models').hidden = embeddingBody.rows.length === 0;
     }
 
     loadStatus();
