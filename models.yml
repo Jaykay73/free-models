@@ -3,7 +3,7 @@ settings:
   base_url: https://integrate.api.nvidia.com/v1
   probe_timeout_s: 30
   max_models_per_run: 40
-  exclude_patterns: [embed, rerank, guard, translate, parse, clip, safety]
+  exclude_patterns: [rerank, guard, translate, parse, clip, safety]
 models:
   nvidia/nemotron-3.5-bolt-e4b:
     tier: small
@@ -21,6 +21,15 @@ models:
     tier: medium
     capabilities: [chat]
     preference: 0
+  nvidia/nemotron-3-embed-1b:
+    tier: small
+    capabilities: [embedding]
+  nvidia/nemotron-3.5-embed-1b:
+    tier: small
+    capabilities: [embedding]
+  nvidia/nemotron-3.5-embed-8b:
+    tier: medium
+    capabilities: [embedding]
 aliases:
   fast: {min_tier: small, require: [chat], prefer_speed: true}
   general: {min_tier: medium, require: [chat]}
