@@ -1,218 +1,153 @@
-# nim-model-status
+# NVIDIA model status and automatic switching
 
-After the first PyPI release, Python applications can install the client with `python -m pip install nimstatus` and import it with `from nimstatus import ModelRouter`. The [release guide](docs/PYPI.md) covers maintainer setup and publishing.
+This project checks which configured models are responding on NVIDIA's hosted API. It publishes a first choice and a list of backups for each task. In your app, use a short name like `fast` instead of a specific model ID. The client looks up which model to try and can switch to a backup if the first request fails.
 
-**Using the deployed service:** [Python and JavaScript examples](docs/USAGE.md). The [installable Python library](clients/python/README.md) lets applications call aliases without hardcoded model IDs. **Applying the security update:** [deployment and branch-protection instructions](docs/SECURITY_SETUP.md). The protection files must be applied to GitHub; committing them alone does not protect branches.
+## See which models are available
 
-A GitHub Actions health monitor for NVIDIA's hosted API catalog. It discovers models, makes tiny health requests using **one maintainer-owned key**, and publishes ranked model names as static JSON on GitHub Pages. Applications fetch those names and call NVIDIA directly using their own credentials.
+Open the [public status directory](https://jaykay73.github.io/free-models/status.json) in your browser. You can view it without an account or API key.
 
-This service is **not a proxy**. It has no server, receives no application inference traffic or user keys, and implements no key pooling, account rotation or rate-limit evasion. GitHub's public repository, Actions and Pages allowances provide the hosting; check their current limits before use at scale.
+Find `aliases` and look under `fast`. Each alias is a short name for a task and has these fields:
 
-```mermaid
-flowchart LR
-  A[Actions cron + maintainer secret] -->|catalog + tiny probes| N[NVIDIA API]
-  A -->|history and status| D[data branch]
-  D --> P[GitHub Pages status.json]
-  C[Your application] -->|cached fetch| P
-  C -->|own key, direct inference| N
+| Field | What it means |
+| --- | --- |
+| `primary` | The model to try first. `null` means there is currently no selection. |
+| `fallbacks` | Backup models, in the order the client tries them. An empty list means the alias has no backups. |
+| `stale` | When `true`, the monitor is keeping an older choice for this alias. |
+
+At the top of the file, `generated_at` shows when the directory was published and `valid_until` shows when it expires. The `models` section shows the health and last check time for individual models. The checks use the maintainer's NVIDIA account, so access and usage limits can differ on your account.
+
+| Alias | When to use it |
+| --- | --- |
+| `fast` | Quick chat and a good first test. |
+| `general` | Everyday chat and writing. |
+| `code` | Coding tasks. Maintainers choose which models qualify. |
+| `tools` | Requests that use tool calling. |
+| `json` | Requests that need JSON output. |
+
+## Use automatic switching in Python
+
+You need **Python 3.11 or newer**. You can use the public directory without cloning this repository or setting up GitHub Actions. For JavaScript and Node.js, see the [usage guide](docs/USAGE.md#javascript).
+
+### 1. Install the client and try a model lookup
+
+Open PowerShell on Windows or Terminal on macOS or Linux. Run these two commands:
+
+```sh
+python -m pip install nimstatus openai
+python -c "from nimstatus import ModelRouter; print(ModelRouter().resolve('fast'))"
 ```
 
-## Verified NVIDIA API facts
+If your Python command is `python3` or `py`, use it in place of `python` throughout this guide. If you're adding this to an existing app, run the installation in that app's Python environment.
 
-Checked 2026-11-12 against the [NVIDIA API reference](https://docs.api.nvidia.com/nim/reference/llm-apis), a [chat endpoint reference](https://docs.api.nvidia.com/nim/reference/openai-gpt-oss-120b-infer), and the [live model catalog](https://integrate.api.nvidia.com/v1/models):
+The second command prints a list of model IDs. The first is the current choice and the rest are backups. If you get an empty list, open the [status directory](https://jaykay73.github.io/free-models/status.json) to see whether `fast` has a primary model.
 
-- Base URL: `https://integrate.api.nvidia.com/v1`.
-- Bearer authentication: `Authorization: Bearer <personal nvapi-… key>`. Keep the actual key only in a repository secret or your local environment.
-- `GET /v1/models` returns an OpenAI-style `{"object":"list","data":[{"id":"…", ...}]}` envelope. Listing does not establish that a model is hosted for your account.
-- `POST /v1/chat/completions` accepts OpenAI-compatible messages. NVIDIA documents `stream: true` as SSE `data:` deltas and exposes `tools` and `tool_choice` for supported models. Support is model-dependent; tools and JSON are verified here.
+### 2. Get your NVIDIA API key
 
-No authenticated live inference was performed to develop this project. A roughly 40 requests/minute/model trial limit is **an unverified report, not an entitlement**. Read the current [NVIDIA API terms](https://developer.nvidia.com/legal/terms-of-use) and your account's trial conditions. Use one personal key for tiny probes only; reread the terms before promoting this monitor widely.
+Sign in to [NVIDIA Build](https://build.nvidia.com/), open a hosted model's page, then select **Get API Key** and **Generate Key**. When the example below prompts you, paste the key and press Enter. The terminal hides the key as you paste. If your app already sets `NVIDIA_API_KEY` in its environment, the example uses that value. [NVIDIA's API key instructions](https://docs.nvidia.com/nim/large-language-models/1.7.0/getting-started.html#generate-an-api-key).
 
-## Setup
+### 3. Send a request
 
-Requires Python 3.12 and Git. The commands below use Bash (Git Bash works on Windows).
+Save this as `ask_nvidia.py` in the folder where you opened your terminal.
 
-1. Create a **public GitHub repository**, copy these files into its default `main` branch, and push. Do not commit credentials.
-2. In Settings → Secrets and variables → Actions, create `NVIDIA_API_KEY` containing your personal NVIDIA API key. Enable Actions and allow workflow write access if organization policy requires it.
-3. Edit **only configuration**, not Python: replace the clearly marked placeholder IDs in `models.yml` with models from the live catalog. Assign tiers/capabilities and ensure each alias has a possible candidate. The supplied placeholders intentionally do not produce live routing. The catalog is public at the URL above; inspect it in a browser. Commit the configuration to `main`.
-4. Create and push the orphan `data` branch in a separate worktree:
+```python
+from getpass import getpass
+import os
+
+from nimstatus import ModelRouter
+from openai import OpenAI
+
+api_key = os.getenv("NVIDIA_API_KEY") or getpass("Paste your NVIDIA API key: ")
+api = OpenAI(
+    base_url="https://integrate.api.nvidia.com/v1",
+    api_key=api_key,
+    max_retries=0,
+    timeout=30,
+)
+router = ModelRouter(max_attempts=3)
+
+
+def ask(model):
+    print(f"Trying {model}")
+    return api.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "What is a Python dictionary?"}],
+        max_tokens=256,
+    )
+
+
+answer = router.call("fast", ask)
+print(answer.choices[0].message.content)
+```
+
+Run it from the same folder:
+
+```sh
+python ask_nvidia.py
+```
+
+You'll see `Trying …` followed by the model's answer. If the first request hits a rate limit, times out, loses its connection or gets a server error, the router tries the next available backup. This example tries up to three models total. Your app sends its prompts and key directly to NVIDIA. The public directory only provides model information.
+
+### 4. Use it in your app
+
+Keep one `ModelRouter` and call `router.call("fast", ask)` for each request. Put your existing NVIDIA request inside `ask(model)` and pass that `model` to the SDK. Change `fast` to another alias when you need a different kind of model. The router checks for updated choices at most once every five minutes and can use its last successful lookup if the directory is temporarily unreachable.
+
+`router.resolve("fast")` lists choices. `router.call("fast", ask)` is what tries the backups. Each new request starts with the current first choice. The example uses a standard, non-streaming response. If your app streams responses, handle errors that occur after streaming begins in your app. [Python client reference](clients/python/README.md).
+
+## Troubleshooting
+
+| What you see | What to check |
+| --- | --- |
+| `python` is unknown | Try `python3 --version` or, on Windows, `py --version`. Install Python 3.11 or newer if needed. |
+| `No module named nimstatus` or `No module named openai` | Run the install command with the same Python command and environment you use to run the script. |
+| `NoModelsAvailable`, an empty list or a stale-route warning | Check the alias and the directory's timestamps. If Pages is unreachable, try `ModelRouter(status_url="https://raw.githubusercontent.com/Jaykay73/free-models/data/status.json")`. A missing alias or an expired snapshot can also affect the raw copy. |
+| `401` or `403` | Check that your NVIDIA key is valid and that your account can call the selected model. Authentication and permission errors stop the request. |
+| `400` | Check your request fields and whether the alias supports what you're asking for. Invalid requests stop immediately. |
+| `429`, a timeout or a server error after trying backups | The request ran out of eligible backups or reached the attempt limit. Check your NVIDIA usage limits or try again later. |
+
+## Run your own monitor
+
+Use this section if you want to manage the model list or publish a separate directory. The monitor uses Python **3.12** and Git.
+
+1. Fork this repository on GitHub, or push a copy to a public GitHub repository with `main` as its default branch. Enable Actions on the repository.
+2. In your repository, open **Settings → Secrets and variables → Actions → New repository secret**. Name the secret `NVIDIA_API_KEY` and paste the key the monitor will use to check models.
+3. Review [`models.yml`](models.yml) on `main`. It contains the configured models and the rules for each alias. To add a model, copy its ID from the [NVIDIA catalog](https://integrate.api.nvidia.com/v1/models), then set its tier and capabilities in `models.yml`. Newly discovered models appear under `unclassified` until you configure them. Tool calling and JSON must pass their respective health checks before a model can be newly selected for those aliases.
+4. Create the `data` branch if it doesn't already exist. Run these commands from your local repository in Bash or Git Bash on Windows. They create a separate worktree for the empty branch.
 
    ```bash
    git worktree add --detach ../nim-status-data
    cd ../nim-status-data
    git switch --orphan data
-   python -c 'import json; from datetime import datetime,timedelta,timezone; n=datetime.now(timezone.utc); print(json.dumps(dict(schema_version=1,generated_at=n.isoformat(),valid_until=(n+timedelta(minutes=40)).isoformat(),health="stale",run_id="bootstrap",aliases={},models={},unclassified=[],notes=["Awaiting first successful probe"])))' > status.json
+   python -c 'import json; from datetime import datetime, timedelta, timezone; n = datetime.now(timezone.utc); print(json.dumps(dict(schema_version=1, generated_at=n.isoformat(), valid_until=(n+timedelta(minutes=40)).isoformat(), health="stale", run_id="bootstrap", aliases={}, models={}, unclassified=[], notes=["Awaiting first successful probe"])))' > status.json
    touch .nojekyll
    git add status.json .nojekyll
-   git commit -m 'Initialize static status branch'
+   git commit -m "Initialize status directory"
    git push -u origin data
    cd -
    ```
 
-   `git switch --orphan` removes tracked files from this new worktree. Use a new disposable worktree as shown. `history.json` is created automatically on the first successful run; its absence logs a warning. The bootstrap document is schema-valid and deliberately empty; the monitor refuses to publish all-empty routing after probing.
-5. Settings → Pages → Build and deployment → **Deploy from a branch** → `data` → `/ (root)`. Save. No additional Pages token is needed. GitHub may require the repository owner to verify an email address.
-6. Actions → **Probe NVIDIA models** → Run workflow. Inspect the request-count summary. A successful run populates both state files and pushes `data`. The separate `pages.yml` workflow then requests a Pages build with only `pages: write` permission; it has no NVIDIA secret and executes no repository code. This is necessary because [GitHub documents that `GITHUB_TOKEN` pushes do not trigger Pages builds](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site). It uses the [Pages build API](https://docs.github.com/en/rest/pages/pages#request-a-github-pages-build), preserving your `data` branch root source. Run **Keep schedules enabled** manually once as well.
-7. Wait for Pages deployment, then verify:
+5. In **Settings → Pages**, choose **Deploy from a branch**, select `data` and `/ (root)`, then save.
+6. Under **Actions**, run **Probe NVIDIA models** on `main`. Wait for both the probe and publish jobs to succeed, then check **Refresh branch-source Pages**. Run **Keep schedules enabled** once as well. See the [maintainer setup guide](docs/SECURITY_SETUP.md#2-apply-branch-protection) for applying branch protections.
+7. Open your published site URL from **Settings → Pages**, add `/status.json`, and check that `aliases` has a primary model. Use that URL in your app with `ModelRouter(status_url="YOUR_STATUS_URL")`.
 
-   ```bash
-   curl -fsS https://USER.github.io/REPO/status.json
-   curl -sI https://USER.github.io/REPO/status.json | grep -i access-control
-   ```
+The workflow is scheduled every ten minutes, though GitHub may delay runs. If the directory stops updating, check the latest probe and Pages runs in **Actions**. Failed probes can leave the previous directory in place. [GitHub schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
-   From the browser console on a **different HTTPS origin** (without a restrictive CSP), run:
+### Test the monitor locally
 
-   ```js
-   fetch('https://USER.github.io/REPO/status.json')
-     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-     .then(s => console.log(s.generated_at, s.aliases))
-     .catch(console.error);
-   ```
+From the repository root, run these commands in a Python 3.12 environment. The final command uses saved test responses, so it needs no NVIDIA key and writes no status files.
 
-   Verify the CORS response and actual browser fetch; do not assume Pages is permissive. Use a same-origin cached copy if your hosting configuration fails this test. Raw fallback: `https://raw.githubusercontent.com/USER/REPO/data/status.json`. Prefer Pages: raw hosting is more constrained by rate limits.
-
-**Check the Actions tab monthly.** Public-repository scheduled workflows can be disabled after 60 days without repository activity. Keepalive runs on the 1st and 15th and calls `gh workflow enable` for both schedules, but a disabled keepalive cannot wake itself. Re-enable both manually if necessary. Bot commits are not assumed to prevent disabling. See [GitHub schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
-
-## Local use and offline development
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install --require-hashes --only-binary=:all: -r requirements.lock
-pip install --no-deps --no-build-isolation -e .
-pytest -q
-python -m nimstatus.main --offline tests/fixtures/healthy --dry-run
+```sh
+python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+python -m pip install --no-deps --no-build-isolation -e .
+python -m pytest -q
+python -m nimstatus.main --config tests/fixtures/healthy/models.yml --offline tests/fixtures/healthy --dry-run
 ```
 
-On PowerShell activate with `.venv\Scripts\Activate.ps1`. Online runs read `NVIDIA_API_KEY` from the environment. Never paste it into commands that enter shell history. `--dry-run` still makes probes unless paired with `--offline`; it writes no files. `--data-dir PATH` defaults to `data`, `--config PATH` defaults to `models.yml`. Nonzero exit means publication failed. Offline mode needs no secret and uses `responses.json`: a discovery HTTP envelope and per-model `liveness`, `tools`, `json` HTTP envelopes, optional SSE text or simulated `network`/`timeout` errors. Tests prohibit real httpx transport; JS tests replace fetch. `pytest` also invokes Node client tests if Node 18+ is installed (otherwise explicitly skips them); run `node --test tests/client.test.mjs` separately if desired.
+Use separate Python environments for the monitor and the installable client. Both use the `nimstatus` import name.
 
-Validation: the exact hash-locked dependencies install successfully in a clean local Python 3.11 environment; `pip check` passes and the suite reports 52 passed, 1 skipped (Windows cannot create the symlink used by that test). The standalone client wheel builds, installs and imports without runtime dependencies. Python 3.12 remains the monitor deployment target; the CI and probe workflows verify the updated suite there before any secret-bearing step. Live account access, the new publishing workflow, branch protections, Pages delivery and CORS require owner verification during deployment. See [security setup](docs/SECURITY_SETUP.md).
+## More information
 
-## Configuration and operation
+- [Python and JavaScript integration guide](docs/USAGE.md)
+- [Monitor deployment and branch protection](docs/SECURITY_SETUP.md)
+- [Publishing the Python package](docs/PYPI.md)
 
-`models.yml` is the only model classification source. Add an ID from `unclassified`, set `tier: small | medium | large`, and declare `capabilities: [chat, code, tools, json]` as appropriate. `preference` is a manual boost between -1 and +1, default 0. Aliases specify `min_tier`, required capabilities and optional `prefer_speed`. Unknown tiers, impossible aliases and invalid settings fail validation. No IDs are embedded in implementation code.
-
-Unknown catalog IDs never enter aliases automatically. `exclude_patterns` are case-insensitive **substrings**, applied to unclassified IDs; explicitly configured models remain under your control. Missing catalog entries become `listed: false` and unavailable, with at most daily probing. Discovery failures reuse the previous catalog and never turn a failed GET into mass removal; a first run without any previous catalog fails safely.
-
-Defaults: 30-second **total** request deadline, 64 output tokens, temperature zero, 40 liveness candidates/run, at most 5 simultaneous requests, random 0–2-second gaps between launches. Selection prioritizes least-recently-probed IDs. There are at most `max_models_per_run + 10` POST requests including compatibility fallbacks and capabilities, plus one catalog GET. The count is logged even on probe failure. No timeout, 429, 5xx or network failure is retried. An explicit unsupported-stream error permits a non-streaming compatibility request, and an explicit unsupported-`response_format` error permits a prompt-only JSON request. Both consume the budget. Tools and JSON verification occur at most once per capability every six hours per model; liveness runs first, then oldest due verifications. The extra ten-request allowance may delay capability verification across runs.
-
-Liveness strips think blocks. `pong` passes the canary; other nonempty visible text with finish reason `stop` or `length` passes liveness with `canary_ok: false`. Reasoning that consumes all 64 tokens can fail; increase `max_tokens` cautiously if needed. Streaming records first **content** delta latency, with total latency always recorded; JSON responses to streaming requests are accepted with null TTFT. Tools require a function call ID, correct name, JSON arguments and a nonempty string `city`. JSON capability requires a JSON object, without Markdown fences.
-
-Scores use a 24h window, six-hour exponential half-life, success=1, throttled=0.4 and other failures=0. Latency uses successful-probe median TTFT when available, otherwise median total time: factor 1 at ≤3s, linearly declining to 0.2 at ≥20s. Score is `availability² × latency_factor × (1 + preference)`. Speed aliases multiply by latency factor again. Unprobed/zero-availability models are excluded. Code capability is a manual classification, not a benchmark.
-
-Three consecutive timeout/server/network failures open the circuit. Backoff skips 1, 2, 4, 8… runs, capped near six hours at the configured interval. Two successful probes close it. A 404/410 immediately makes it unavailable with daily checks. Alias primary changes only on ineligibility, score below 0.5, or a challenger leading by ≥0.15 for three consecutive evaluated runs. Scores used by speed aliases include their extra latency weighting. Up to four eligible fallbacks follow the primary. A failed/unverified capability cannot receive a new capability-dependent assignment; last-known-good safety routing can still retain an old assignment marked stale.
-
-## Published document and durable state
-
-`status.json` schema version 1:
-
-```json
-{
-  "schema_version": 1,
-  "generated_at": "2026-11-12T14:05:00Z",
-  "valid_until": "2026-11-13T02:05:00Z",
-  "health": "ok",
-  "run_id": "local",
-  "aliases": {"fast": {"primary": "<configured-id>", "fallbacks": [], "stale": false}},
-  "models": {
-    "<configured-id>": {
-      "status": "closed", "listed": true, "score": 0.87, "availability": 0.98,
-      "p50_total_ms": 1400, "p50_ttft_ms": 420,
-      "capability_verified": {"tools": true, "json": true},
-      "last_probed": "2026-11-12T14:05:00Z"
-    }
-  },
-  "unclassified": [],
-  "notes": []
-}
-```
-
-Times are UTC ISO 8601; latencies are milliseconds or null; `last_probed` may be null. Capability keys are absent until tested. Circuit states: `closed`, `open`, `unavailable`. Empty aliases carry `primary: null`, `fallbacks: []`, `stale: false`, and `reason`. A previous nonempty alias is retained with `stale: true` if it would become empty. `health` is `ok`, `degraded` for partial stale/empty aliases or discovery warnings, and `stale` if all aliases retain old routing. Clients should inspect per-alias stale flags too.
-
-`valid_until` is 12 hours after generation to allow for delays in GitHub's scheduled runs. The next successful run rewrites the directory when routing or health changes, the last publication is at least two hours old, or the directory is within two hours of expiry. Use `generated_at` to see the snapshot's age. Clients still warn and can use the last known route when the directory expires.
-
-`history.json` schema version 1 contains run count, last catalog, alias challenger streaks, circuits, capability results with timestamps, and 48h of raw probe records. On disk records use `{base, rows}`: each row is `[seconds_since_base, ok_0_or_1, http_status, error_index, ttft_ms, total_ms, canary_0_or_1]`. Error enum order is `ok, timeout, throttled, server_error, not_found, auth, client_error, network, malformed`. Timing is rounded to milliseconds. `history.load` exposes named records; older named-record input is also accepted. Older records become fixed-size lifetime counts and an EWMA. Typical 40-model history fits below 500 KB; more configured models or faster schedules increase size. JSON writes use temporary files and rename; both documents are validated/prepared before writing, but the pair is not a filesystem-wide atomic transaction. Corrupt or missing history warns and starts fresh.
-
-**Persistence versus commit gating:** GitHub runners are ephemeral. Persisting every probe, rotation position, circuit counters and hysteresis streak requires committing history even when public status does not change. The workflow therefore commits changed history every successful run and gates **status rewrites** on meaningful changes/heartbeat. Literal suppression of every timestamp-only data commit would lose required state. Commits use only a nonempty staged diff; push races get at most three push attempts with rebase, and conflicts fail instead of overwriting another update. The probe concurrency group serializes normal runs.
-
-An auth error aborts with `NVIDIA_API_KEY missing, invalid, or expired` and records nothing. A run with ≥80% network/timeout failures is treated as a global/probe-side outage, exits nonzero and leaves both files unchanged. The outage note appears in the Actions log, **not** in `status.json`, because changing that file would contradict rollback. Total alias emptiness also fails publication. Request/response bodies, credentials and third-party exception text are never logged or persisted. Enable GitHub failure notifications for this workflow; notification delivery depends on your account settings.
-
-## Client helpers
-
-Install the Python client with `pip install nimstatus`. Both clients cache the directory for at least five minutes, keep the last good copy on fetch errors, and support optional defaults. The Python client waits up to three seconds for a directory fetch. This deadline applies to model lookup. Inference uses your SDK's timeout. See the [usage guide](docs/USAGE.md).
-
-Python (helper is stdlib-only; the SDK belongs to **your application**):
-
-```python
-import os
-from openai import OpenAI, APIConnectionError, APITimeoutError, APIStatusError
-from nimstatus_client import resolve, call_with_fallback
-
-options = {
-    "status_url": "https://USER.github.io/REPO/status.json",
-    "defaults": {"fast": ["<your-tested-default-id>"]},
-}
-models = resolve("fast", options)
-api = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
-             api_key=os.environ["NVIDIA_API_KEY"], max_retries=0)
-def retryable(error):
-    return isinstance(error, (APIConnectionError, APITimeoutError)) or (
-        isinstance(error, APIStatusError) and (error.status_code == 429 or error.status_code >= 500))
-answer = call_with_fallback(
-    "fast",
-    lambda model: api.chat.completions.create(model=model, messages=[{"role": "user", "content": "Hello"}]),
-    options, retryable=retryable, max_attempts=3,
-)
-```
-
-JavaScript (helper supports Node 18+ and browsers; use inference SDK credentials only in your own trusted backend):
-
-```js
-import OpenAI from 'openai';
-import {resolve, call_with_fallback} from './nimstatus-client.mjs';
-const options = {
-  status_url: 'https://USER.github.io/REPO/status.json',
-  defaults: {fast: ['<your-tested-default-id>']},
-};
-const models = await resolve('fast', options);
-const api = new OpenAI({baseURL: 'https://integrate.api.nvidia.com/v1',
-  apiKey: process.env.NVIDIA_API_KEY, maxRetries: 0});
-const answer = await call_with_fallback('fast',
-  model => api.chat.completions.create({model, messages: [{role: 'user', content: 'Hello'}]}),
-  {...options, max_attempts: 3,
-   retryable: e => e.status === 429 || e.status >= 500 ||
-     e instanceof OpenAI.APIConnectionError || e instanceof OpenAI.APIConnectionTimeoutError});
-```
-
-Caller classification controls retries: auth and bad requests must return false and rethrow immediately; 429, 5xx and timeouts can try the next model. Helpers stop at `max_attempts` (default 5) and rethrow the final original exception. Applications still choose their own per-inference deadlines. Never put a personal API key in browser JavaScript.
-
-## Limitations and troubleshooting
-
-- GitHub schedules probes every ten minutes, but actual runs can be hours apart. Pages can add several minutes of caching. Cache for at least five minutes and check `generated_at` and `valid_until` to see the age of the directory.
-- A single GitHub-hosted probe location is one vantage point. Your region, quota and key may behave differently. A healthy probe is not a quality guarantee, a code benchmark, or proof of reliable long completions. Trial access, model support and terms may change.
-- Empty aliases on first run: replace placeholder IDs, check the current catalog, tiers and required capabilities. Tools/JSON aliases wait for successful verification. Some models need a larger token allowance for visible output.
-- Auth failure: check the secret's spelling, expiration and account permissions. No automatic key rotation exists. Discovery may work even when inference permissions fail. Never post credentials or request dumps in issues.
-- Outage: consult the constant-text guard message and request count; previous files should remain unchanged. A one-model run with a timeout triggers the conservative global guard. No history exists yet: fix discovery or eligible models and rerun manually.
-- Pages 404 or stale: check the `data` branch, Pages branch/root setting, deployment status, CDN and `valid_until`. Initial `.nojekyll` permits static serving. Inspect **Refresh branch-source Pages**; run it manually if needed. It requires your account/organization to allow the Pages build API with the workflow token. This deployment path must be verified in your repository; it cannot be integration-tested offline.
-- Disabled schedule: enable both workflows in Actions; keep the monthly reminder. `gh workflow enable` may be restricted by organization policy.
-- History commit conflict: inspect the external change, resolve it on `data`, then rerun. Never force-push away probe state. If history is corrupt, the next successful run rebuilds state; hysteresis and aggregates restart.
-- Large configuration: rotation increases time between probes. A 24h window without samples removes eligibility; last-known-good then takes over. The 8-minute job limit can be reached by unusually slow requests or very large budgets; keep defaults conservative.
-
-## Assumptions
-
-1. Hosted API catalog discovery is OpenAI-shaped; endpoint listing is not a guarantee of inference access. No live authenticated call was used during development.
-2. `Authorization`/`Bearer` are defaults; `auth_header`, `auth_scheme` and HTTPS `base_url` can be configured. One secret is used throughout. Redirects and environment HTTP proxies are disabled to avoid credential forwarding.
-3. Supplied model IDs are placeholders. Maintainers manually replace/tag them, judge tiers and code capability, and supply tested client defaults. No source code edit is required.
-4. Tier ordering is small < medium < large; capability names are chat/code/tools/json; exclusions are substrings. A preference of -1 can reduce score to zero.
-5. Unknown or never-tested tools/JSON capability is ineligible; both verifications have separate six-hour schedules. A verification failure remains excluded until it passes, with last-known-good stale routing as the explicit safety exception.
-6. Liveness tolerates non-PONG visible completions with stop/length; this is availability, not instruction-following quality. Think blocks are removed, and TTFT measures first content delta rather than hidden reasoning.
-7. Compatibility requests for explicitly unsupported streaming/JSON options are allowed exceptions to no retry; each counts toward the hard budget. Discovery is one additional GET outside the POST budget.
-8. Availability weights use a six-hour half-life, medians use successful probes only, and no samples imply zero availability. Exponential circuit backoff is measured in runs; unavailable models use wall-clock days. The global guard is conservative even for small sample sizes.
-9. Aliases exclude zero-availability candidates; speed weighting applies to challenger comparisons too. Challenger streaks count successful evaluated runs and survive history commits; failed whole runs neither advance nor reset them.
-10. Outage notes go to the workflow log. Successful runs save history and refresh the public snapshot at the next opportunity after the two-hour heartbeat.
-11. A previous nonempty alias is treated as last-known-good, even if already stale. Repeated degradation can retain it indefinitely; consumers must heed stale warnings and use application defaults/fallbacks.
-12. Default 40-model/10-minute operation is the history-size target. Compact raw rows round latency to milliseconds. Both file writes are individually atomic, not jointly transactional against disk/process failure.
-13. The data branch and Pages are created by the owner; `main` is the default branch; organization policy allows the documented token permissions and Pages build API. Actions use immutable commit SHAs and CI dependencies use the complete hash lock. GitHub hosted Ubuntu has `gh` installed. The probe job has read-only repository access; a separate job validates JSON artifacts and commits with write access. `pages.yml` requests branch-source builds after successful probe workflow completion or manual dispatch. Separate `ci.yml` runs secret-free tests for pull requests and main pushes.
-14. Keepalive and bot commits cannot guarantee perpetual scheduling. Monthly human checks, account notification preferences, client cache and expiry handling are required safeguards.
-15. Clients warn instead of returning metadata, require TTL ≥300 seconds, throttle failed refreshes too, and retain expired data indefinitely on fetch error. Their caches are process-local; users classify inference exceptions and control inference deadlines. No inference key passes through a helper.
-
-MIT licensed. Unaffiliated with NVIDIA.
+[MIT license](LICENSE). This is an independent project.
